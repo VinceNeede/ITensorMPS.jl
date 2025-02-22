@@ -1583,6 +1583,8 @@ function sum(ψ⃗::Vector{T}; kwargs...) where {T<:AbstractMPS}
   return +(ψ⃗...; kwargs...)
 end
 
+using ProgressBars
+
 """
     orthogonalize!(M::MPS, j::Int; kwargs...)
     orthogonalize(M::MPS, j::Int; kwargs...)
@@ -1600,16 +1602,17 @@ bond indices is performed. Afterward, tensors
 Either modify in-place with `orthogonalize!` or
 out-of-place with `orthogonalize`.
 """
-function orthogonalize!(M::AbstractMPS, j::Int; maxdim=nothing, normalize=nothing)
-  # TODO: Delete `maxdim` and `normalize` keyword arguments.
+function orthogonalize!(M::AbstractMPS, j::Int)
   @debug_check begin
     if !(1 <= j <= length(M))
       error("Input j=$j to `orthogonalize!` out of range (valid range = 1:$(length(M)))")
     end
   end
-  while leftlim(M) < (j - 1)
-    (leftlim(M) < 0) && setleftlim!(M, 0)
-    b = leftlim(M) + 1
+
+  (leftlim(M) < 0) && setleftlim!(M, 0)
+  leftLimM = leftlim(M)
+  # println("\t\t\tLeft orthogonalizing")
+  for b =  leftLimM+1:(j - 1)
     linds = uniqueinds(M[b], M[b + 1])
     lb = linkind(M, b)
     if !isnothing(lb)
@@ -1617,9 +1620,8 @@ function orthogonalize!(M::AbstractMPS, j::Int; maxdim=nothing, normalize=nothin
     else
       ltags = TagSet("Link,l=$b")
     end
-    L, R = factorize(M[b], linds; tags=ltags, maxdim)
-    M[b] = L
-    M[b + 1] *= R
+    L, R, = factorize!(M[b], linds; tags=ltags, ortho="left")
+    M[b+1] = R * M[b+1]
     setleftlim!(M, b)
     if rightlim(M) < leftlim(M) + 2
       setrightlim!(M, leftlim(M) + 2)
@@ -1638,7 +1640,7 @@ function orthogonalize!(M::AbstractMPS, j::Int; maxdim=nothing, normalize=nothin
     else
       ltags = TagSet("Link,l=$b")
     end
-    L, R = factorize(M[b + 1], rinds; tags=ltags, maxdim)
+    L, R = factorize(M[b + 1], rinds; tags=ltags, maxdim = nothing)
     M[b + 1] = L
     M[b] *= R
 
@@ -1676,7 +1678,6 @@ Keyword arguments:
 function truncate!(M::AbstractMPS; alg="frobenius", kwargs...)
   return truncate!(Algorithm(alg), M; kwargs...)
 end
-
 function truncate!(
   ::Algorithm"frobenius", M::AbstractMPS; site_range=1:length(M), kwargs...
 )
@@ -1684,10 +1685,12 @@ function truncate!(
 
   # Left-orthogonalize all tensors to make
   # truncations controlled
+  println("\t\tLeft orthogonalizing")
   orthogonalize!(M, last(site_range))
 
   # Perform truncations in a right-to-left sweep
-  for j in reverse((first(site_range) + 1):last(site_range))
+  println("\t\tRight to left sweep truncating")
+  for j in ProgressBar(reverse((first(site_range) + 1):last(site_range)))
     rinds = uniqueinds(M[j], M[j - 1])
     ltags = tags(commonind(M[j], M[j - 1]))
     U, S, V = svd(M[j], rinds; lefttags=ltags, kwargs...)
