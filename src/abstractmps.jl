@@ -1612,7 +1612,7 @@ function orthogonalize!(M::AbstractMPS, j::Int)
   (leftlim(M) < 0) && setleftlim!(M, 0)
   leftLimM = leftlim(M)
   # println("\t\t\tLeft orthogonalizing")
-  for b =  leftLimM+1:(j - 1)
+  for b =  ProgressBar(leftLimM+1:(j - 1))
     linds = uniqueinds(M[b], M[b + 1])
     lb = linkind(M, b)
     if !isnothing(lb)
@@ -1620,8 +1620,15 @@ function orthogonalize!(M::AbstractMPS, j::Int)
     else
       ltags = TagSet("Link,l=$b")
     end
-    L, R, = factorize!(M[b], linds; tags=ltags, ortho="left")
-    M[b+1] = R * M[b+1]
+    try 
+      L, R = factorize!(M[b], linds; tags=ltags, ortho="left")
+      M[b] = L
+      M[b+1] = R * M[b+1]
+    catch e
+      L, R = factorize(M[b], linds; tags=ltags, ortho="left")
+      M[b] = L
+      M[b+1] = R * M[b+1]
+    end
     setleftlim!(M, b)
     if rightlim(M) < leftlim(M) + 2
       setrightlim!(M, leftlim(M) + 2)
