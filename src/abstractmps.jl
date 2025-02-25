@@ -1583,7 +1583,6 @@ function sum(ψ⃗::Vector{T}; kwargs...) where {T<:AbstractMPS}
   return +(ψ⃗...; kwargs...)
 end
 
-using ProgressBars
 
 """
     orthogonalize!(M::MPS, j::Int; kwargs...)
@@ -1611,8 +1610,7 @@ function orthogonalize!(M::AbstractMPS, j::Int)
 
   (leftlim(M) < 0) && setleftlim!(M, 0)
   leftLimM = leftlim(M)
-  # println("\t\t\tLeft orthogonalizing")
-  for b =  ProgressBar(leftLimM+1:(j - 1))
+  for b =  leftLimM+1:(j - 1)
     linds = uniqueinds(M[b], M[b + 1])
     lb = linkind(M, b)
     if !isnothing(lb)
@@ -1692,12 +1690,10 @@ function truncate!(
 
   # Left-orthogonalize all tensors to make
   # truncations controlled
-  println("\t\tLeft orthogonalizing")
   orthogonalize!(M, last(site_range))
 
   # Perform truncations in a right-to-left sweep
-  println("\t\tRight to left sweep truncating")
-  for j in ProgressBar(reverse((first(site_range) + 1):last(site_range)))
+  for j in reverse((first(site_range) + 1):last(site_range))
     rinds = uniqueinds(M[j], M[j - 1])
     ltags = tags(commonind(M[j], M[j - 1]))
     U, S, V = svd(M[j], rinds; lefttags=ltags, kwargs...)

@@ -782,14 +782,13 @@ function ITensors.contract(
   setrightlim!(ψ_out, 2)
   return ψ_out
 end
-using ProgressBars
+
 function update!(ψ_old::ITensor, ψ_new::ITensor)
   setstorage!(ψ_old, storage(ψ_new))
   setinds!(ψ_old, inds(ψ_new))
 end
 
 function _contract!(alg::Algorithm"naive", A::MPO, ψ::MPS; truncate::Bool=true, kwargs...)
-  println("\tstarting contracting")
   A = sim(linkinds, A)    #Produces an view of A where the link indices have different id
   
   N = length(A)
@@ -797,11 +796,10 @@ function _contract!(alg::Algorithm"naive", A::MPO, ψ::MPS; truncate::Bool=true,
     throw(DimensionMismatch("lengths of MPO ($N) and MPS ($(length(ψ))) do not match"))
   end
   
-  for j in ProgressBar(1:N)
+  for j in 1:N
     ψ[j] = A[j] * ψ[j]
     # update!(ψ[j], A[j] * ψ[j])  # Overwrite the location of ψ[j]
   end
-  println("\tcombining indices")
   for b in 1:(N-1)
     l = commoninds(ψ[b], ψ[b+1])
     if !isempty(l)
@@ -810,11 +808,11 @@ function _contract!(alg::Algorithm"naive", A::MPO, ψ::MPS; truncate::Bool=true,
       ψ[b+1] *= dag(C)
     end
   end
-  println("\ttruncating")
+
   if truncate
     truncate!(ψ; kwargs...)
   end
-  println("\tfinished contracting")
+
 end
 
 function _contract(alg::Algorithm"naive", A::MPO, ψ::MPS; kwargs...)
