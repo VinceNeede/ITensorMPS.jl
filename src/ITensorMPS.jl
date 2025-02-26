@@ -1,5 +1,6 @@
 module ITensorMPS
 using ITensors
+using LoggingExtras
 include("imports.jl")
 include("exports.jl")
 include("abstractmps.jl")

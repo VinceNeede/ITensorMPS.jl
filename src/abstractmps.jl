@@ -1610,7 +1610,9 @@ function orthogonalize!(M::AbstractMPS, j::Int)
 
   (leftlim(M) < 0) && setleftlim!(M, 0)
   leftLimM = leftlim(M)
+  @debug "Orthogonalizing MPS at site $j starting from leftLimM=$leftLimM"
   for b =  leftLimM+1:(j - 1)
+    @debug "Orthogonalizing bond $b"
     linds = uniqueinds(M[b], M[b + 1])
     lb = linkind(M, b)
     if !isnothing(lb)
@@ -1618,6 +1620,7 @@ function orthogonalize!(M::AbstractMPS, j::Int)
     else
       ltags = TagSet("Link,l=$b")
     end
+    ## TODO: Add a check function to verify that it can be done in place instead of try-catch
     try 
       L, R = factorize!(M[b], linds; tags=ltags, ortho="left")
       M[b] = L
@@ -1637,6 +1640,7 @@ function orthogonalize!(M::AbstractMPS, j::Int)
 
   while rightlim(M) > (j + 1)
     (rightlim(M) > (N + 1)) && setrightlim!(M, N + 1)
+    @warn "Orthogonalizing Right"
     b = rightlim(M) - 2
     rinds = uniqueinds(M[b + 1], M[b])
     lb = linkind(M, b)
@@ -1688,12 +1692,14 @@ function truncate!(
 )
   N = length(M)
 
-  # Left-orthogonalize all tensors to make
-  # truncations controlled
+  @debug "Left-orthogonalize all tensors to make
+          truncations controlled"
   orthogonalize!(M, last(site_range))
 
   # Perform truncations in a right-to-left sweep
+  @debug "Starting truncation sweep"
   for j in reverse((first(site_range) + 1):last(site_range))
+    @debug "Truncating bond $j"
     rinds = uniqueinds(M[j], M[j - 1])
     ltags = tags(commonind(M[j], M[j - 1]))
     U, S, V = svd(M[j], rinds; lefttags=ltags, kwargs...)
