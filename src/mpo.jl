@@ -796,19 +796,48 @@ function _contract!(alg::Algorithm"naive", A::MPO, ψ::MPS; truncate::Bool=true,
     throw(DimensionMismatch("lengths of MPO ($N) and MPS ($(length(ψ))) do not match"))
   end
   
+  
+  ## Stack-like implementation
+  dataψ = data(ψ)
+  ψ_rev = similar(dataψ)
   for j in 1:N
-    ψ[j] = A[j] * ψ[j]
-    # update!(ψ[j], A[j] * ψ[j])  # Overwrite the location of ψ[j]
+    ψ_rev[j] = pop!(dataψ)  # populate ψ_rev with the ITensors in reverse order, pop it from ψ to make them unreachable for it
   end
-  for b in 1:(N-1)
-    l = commoninds(ψ[b], ψ[b+1])
+  reset_ortho_lims!(ψ)
+  T2 = pop!(ψ_rev) * A[1] # pop the element and multply, notice that now what was ψ[1] is unreachable
+  for j in 2:N
+    T1 = T2
+    T2 = pop!(ψ_rev) * A[j]
+
+    l = commoninds(T1, T2)
     if !isempty(l)
       C = combiner(l)
-      ψ[b] *= C
-      ψ[b+1] *= dag(C)
+      T1 *= C
+      T2 *= dag(C)
     end
-  end
+    push!(dataψ, T1)  # push the result of the contraction
+    push!(dataψ, T2)  # push also T2 just to use orthogonalize! but then remove it
+    orthogonalize!(ψ, j)
+    if j<N
+      T2=pop!(dataψ) # remove T2, leave it if it is the last iteration
+    end
 
+####### Debug
+    @assert length(ψ) == (j<N ? j-1 : j)
+    @assert length(ψ_rev) == N-j 
+    total_size = Base.summarysize(ψ)+Base.summarysize(ψ_rev)
+    if j<N
+      total_size += Base.summarysize(T2)
+    end
+    @debug "Size after contraction is $(total_size/2^20) MiB"
+  end
+  T1 = T2 = nothing #make them unreachable
+  @debug begin
+    @assert length(ψ) == N
+    @assert length(ψ_rev) == 0
+    @assert orthocenter(ψ) == N
+  end
+  # on exit the MPS il left orthogonalized
   if truncate
     truncate!(ψ; kwargs...)
   end
