@@ -98,6 +98,9 @@ import Base.Broadcast:
   broadcastable,
   instantiate
 
+import Logging:
+  @debug
+
 import ..ITensors.NDTensors:
   Algorithm,
   @Algorithm_str,
