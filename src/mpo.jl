@@ -786,6 +786,71 @@ function ITensors.contract(
   return ψ_out
 end
 
+function _contract!(alg::Algorithm"unsafenaive", A::MPO, ψ::MPS;
+  cutoff::Float64=1.e-12, 
+  maxdim::Int64=maxlinkdim(ψ)*maxlinkdim(A), kwargs...)
+  @debug "starting Unsafe Naive"
+  A = sim(linkinds, A)    #Produces an view of A where the link indices have different id
+  
+  N = length(A)
+  if N != length(ψ)
+    throw(DimensionMismatch("lengths of MPO ($N) and MPS ($(length(ψ))) do not match"))
+  end
+
+  ϕ = MPS(N)
+  mpsIn = ϕ
+  stackIn = data(ϕ)
+  mpsOut = ψ
+  stackOut = data(ψ)
+  Base._deleteend!(stackIn, N)  # This is to avoid but it's easier
+  mpoIndex = N
+  mpoIndexIncrement = -1
+  bondIndex = N-1
+
+  reset_ortho_lims!(mpsIn)
+
+  T2 = pop!(stackOut) * A[mpoIndex]
+  mpoIndex += mpoIndexIncrement
+  for j in 2:N
+    T1 = T2
+    T2 = pop!(stackOut) * A[mpoIndex]
+
+    l = commoninds(T1, T2)
+    @debug "common inds" l
+    if !isempty(l)
+      C = combiner(l; tags="Link,l=$(bondIndex)")
+      T1 *= C
+      T2 *= dag(C)
+    end
+    push!(stackIn, T1)  # push the result of the contraction
+    push!(stackIn, T2)  # push also T2 just to use orthogonalize! but then remove it
+    orthogonalize!(mpsIn, j)
+    setindex!(mpsIn, T1*T2, j-1:j; cutoff=cutoff, maxdim=maxdim)  # push the result of the contraction
+    if j<N
+      T2=pop!(stackIn) # remove T2, leave it if it is the last iteration
+    end
+    mpoIndex += mpoIndexIncrement
+    bondIndex += mpoIndexIncrement
+####### Debug
+    @assert length(mpsIn) == (j<N ? j-1 : j)
+    @assert length(mpsOut) == N-j 
+    total_size = Base.summarysize(ψ)+Base.summarysize(ϕ)
+    if j<N
+      total_size += Base.summarysize(T2)
+    end
+    @debug "Size after contraction is $(total_size/2^20) MiB"
+  end
+  T1 = T2 = nothing #make them unreachable
+
+  @debug "" length(mpsOut) == 0 length(mpsIn) == N
+  
+  for _ in 1:N
+    push!(stackOut, pop!(stackIn))
+  end
+  setleftlim!(ψ, 0)
+  setrightlim!(ψ, 2)
+end
+
 function _contract!(alg::Algorithm"naive", A::MPO, ψ::MPS; truncate::Bool=true, kwargs...)
   A = sim(linkinds, A)    #Produces an view of A where the link indices have different id
   
@@ -890,11 +955,11 @@ function _contract(alg::Algorithm"naive", A::MPO, ψ::MPS; kwargs...)
 end
 
 function ITensors.contract!(
-  alg::Algorithm"naive",
+  alg::Algorithm,
   A::MPO,
   ψ::MPS;
   kwargs...)
-  _contract!(Algorithm"naive"(), A, ψ; kwargs...)
+  _contract!(alg, A, ψ; kwargs...)
 end
 
 function ITensors.contract(alg::Algorithm"naive", A::MPO, ψ::MPS; kwargs...)
