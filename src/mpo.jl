@@ -789,6 +789,9 @@ end
 function _contract!(alg::Algorithm"unsafenaive", A::MPO, ψ::MPS;
   cutoff::Float64=1.e-12, 
   maxdim::Int64=maxlinkdim(ψ)*maxlinkdim(A), kwargs...)
+  @warn "This algorithm is marked as UNSAFE because the truncation is performed at each iteration
+  making the algorithm unstable. Use at your own risk." maxlog=1
+
   @debug "starting Unsafe Naive"
   A = sim(linkinds, A)    #Produces an view of A where the link indices have different id
   
