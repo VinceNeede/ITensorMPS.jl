@@ -1,7 +1,28 @@
 using ITensors, Test, Random
-using ITensorMPS: dmrg, nsite, set_nsite!, siteinds, site_range
+using ITensorMPS: dmrg, nsite, set_nsite!, siteinds, site_range, filterKrylovKitWarnings
+import KrylovKit: WARN_LEVEL, eigsolve
+import LinearAlgebra: Diagonal
+import LoggingExtras: ActiveFilteredLogger, with_logger
 
 @testset "Basic DMRG" begin
+  @testset "Test whether KrylovKit.eigsolve logs the non hermitian warning in the right format" begin
+    L=20	#if L is too small the test will fail
+    A = Diagonal([exp(im*1*pi*(k-1)/L) for k in 1:L])
+  
+    function applyA(v)
+        return A*v
+    end
+    x0 = rand(L)
+  
+    test_logger = TestLogger()
+    should_warn=Ref(true)
+    with_logger(ActiveFilteredLogger(filterKrylovKitWarnings(0,should_warn),test_logger)) do
+        eigsolve(applyA, x0, 1, :SR; ishermitian=true, verbosity=WARN_LEVEL)
+    end
+    @test length(test_logger.logs)==1
+    log = test_logger.logs[1]
+    @test endswith(log.file,"factorizations/lanczos.jl")
+  end
   @testset "Spin-one Heisenberg" begin
     N = 10
     sites = siteinds("S=1", N)
