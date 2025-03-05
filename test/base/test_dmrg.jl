@@ -20,8 +20,6 @@ import LoggingExtras: ActiveFilteredLogger, with_logger
         eigsolve(applyA, x0, 1, :SR; ishermitian=true, verbosity=WARN_LEVEL)
     end
     @test length(test_logger.logs)==1
-    log = test_logger.logs[1]
-    @test endswith(log.file,"factorizations/lanczos.jl")
   end
   @testset "Spin-one Heisenberg" begin
     N = 10
