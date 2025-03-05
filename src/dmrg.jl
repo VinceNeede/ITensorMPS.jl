@@ -3,6 +3,7 @@ using KrylovKit: eigsolve
 using NDTensors: scalartype, timer
 using Printf: @printf
 using TupleTools: TupleTools
+using LoggingExtras: ActiveFilteredLogger, with_logger, current_logger, global_logger
 
 function permute(
   M::AbstractMPS, ::Tuple{typeof(linkind),typeof(siteinds),typeof(linkind)}
@@ -53,6 +54,19 @@ function dmrg(H::MPO, Ms::Vector{MPS}, psi0::MPS, sweeps::Sweeps; weight=true, k
   end
   PMM = ProjMPO_MPS(H, Ms; weight)
   return dmrg(PMM, psi0, sweeps; kwargs...)
+end
+
+function filterKrylovKitWarnings(eigsolve_verbosity::Int, should_warn::Ref{Bool})
+  function filter(log_args)
+    eigsolve_verbosity > 0 && return true
+    if should_warn[] && endswith(log_args.file, "factorizations/lanczos.jl")
+      should_warn[] = false
+      return true
+    end
+    return false
+    # return log_args.id==:KrylovKit_factorizations_lanczos_warn_nonhermitian
+  end
+  return filter
 end
 
 using NDTensors.TypeParameterAccessors: unwrap_array_type
@@ -205,7 +219,7 @@ function dmrg(
   for sw in 1:nsweep(sweeps)
     sw_time = @elapsed begin
       maxtruncerr = 0.0
-
+      should_warn = Ref(true)
       if !isnothing(write_when_maxdim_exceeds) &&
         maxdim(sweeps, sw) > write_when_maxdim_exceeds
         if outputlevel >= 2
@@ -235,20 +249,24 @@ function dmrg(
           phi = psi[b] * psi[b + 1]
         end
 
-        @timeit_debug timer "dmrg: eigsolve" begin
-          vals, vecs = eigsolve(
-            PH,
-            phi,
-            1,
-            eigsolve_which_eigenvalue;
-            ishermitian,
-            tol=eigsolve_tol,
-            krylovdim=eigsolve_krylovdim,
-            maxiter=eigsolve_maxiter,
-            verbosity=eigsolve_verbosity,
-          )
+        vals = nothing
+        vecs = nothing
+        with_logger(ActiveFilteredLogger(filterKrylovKitWarnings(eigsolve_verbosity, should_warn), current_logger())) do
+          @timeit_debug timer "dmrg: eigsolve" begin
+            vals, vecs = eigsolve(
+              PH,
+              phi,
+              1,
+              eigsolve_which_eigenvalue;
+              ishermitian,
+              tol=eigsolve_tol,
+              krylovdim=eigsolve_krylovdim,
+              maxiter=eigsolve_maxiter,
+              verbosity=max(eigsolve_verbosity,1),
+            )
+          end
         end
-
+        
         energy = vals[1]
         ## Right now there is a conversion problem in CUDA.jl where `UnifiedMemory` Arrays are being converted
         ## into `DeviceMemory`. This conversion line is here temporarily to fix that problem when it arises
